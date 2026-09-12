@@ -47,9 +47,13 @@ You can install this integration like any other HACS custom integration.
 
 ### HACS
 
-- Add this repository's URL as a custom repository in HACS, under the
-  "Integration" category.
-- Search for "70mai Dashcam" and click Install.
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=lorenzo-deluca&repository=homeassistant-70mai&category=integration)
+
+- Click the badge above to open this repository directly in HACS, then
+  click Install.
+- Or add it manually: HACS → custom repositories → paste this
+  repository's URL under the "Integration" category → search for
+  "70mai Dashcam" → Install.
 
 ### Manual
 
@@ -61,9 +65,11 @@ restart Home Assistant.
 
 Configuration is done entirely from the UI, there's no YAML setup.
 
-1. Go to **Settings → Devices & Services → Add Integration**.
-2. Search for **70mai Dashcam**.
-3. Enter the email and password of your 70mai account (the same one used
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=mai70)
+
+1. Click the badge above, or go to **Settings → Devices & Services → Add
+   Integration** and search for **70mai Dashcam**.
+2. Enter the email and password of your 70mai account (the same one used
    in the mobile app).
 
 Every dashcam bound to that account is discovered automatically and shows
