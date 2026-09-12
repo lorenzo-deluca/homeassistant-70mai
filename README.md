@@ -8,24 +8,19 @@
 
 > Bring your 70mai dashcam's GPS position, car battery voltage and alarms into [Home Assistant](https://www.home-assistant.io/).
 
-This custom component talks to the 70mai cloud API (`eu-api.70mai.com`)
-and turns it into native Home Assistant entities, so you don't need the
-app open to see where your car is, how the battery's holding up, or that
-an alarm just fired. If it's useful to you, a :coffee: or a GitHub :star:
-is always appreciated, thanks! :blush:
+This custom component talks to the 70mai cloud API (`eu-api.70mai.com`) and turns it into native Home Assistant entities, so you don't need the
+app open to see where your car is, how the battery's holding up, or that an alarm just fired. 
+If it's useful to you, a :coffee: or a GitHub :star: is always appreciated, thanks! :blush:
 
 <a href="https://www.buymeacoffee.com/lorenzodeluca" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="150px"></a>
 
 # Disclaimer
+This integration is built on [`70maiclient`](https://github.com/lorenzo-deluca/70maiclient), a Python
+client reverse-engineered from the 70mai iOS app's own network traffic (installed automatically from PyPI as a dependency). 
+It's **not affiliated with, endorsed by, or supported by 70mai**. 
+The underlying API is undocumented and can change without notice, so if something breaks, open an issue here rather than contacting 70mai support (they won't know what this is).
 
-This integration is built on
-[`70maiclient`](https://github.com/lorenzo-deluca/70maiclient), a Python
-client reverse-engineered from the 70mai iOS app's own network traffic
-(installed automatically from PyPI as a dependency). It's **not
-affiliated with, endorsed by, or supported by 70mai**. The underlying API
-is undocumented and can change without notice, so if something breaks,
-open an issue here rather than contacting 70mai support (they won't know
-what this is).
+If someone from 70mai would like to contribute or collaborate please contact me at [me@lorenzodeluca.dev](mailto:me@lorenzodeluca.dev?subject=[GitHub]homeassistant-70mai)
 
 ---
 
