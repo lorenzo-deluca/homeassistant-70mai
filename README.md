@@ -80,11 +80,14 @@ up as its own Home Assistant device.
 Per discovered dashcam (device name = the nickname set in the 70mai app,
 falling back to its WiFi SSID):
 
-| Platform         | Entity                   | Notes |
-| ---------------- | ------------------------ | ----- |
-| `device_tracker` | *Device* Position        | GPS source, only created for devices that actually report a position. |
-| `sensor`         | *Device* Battery voltage | Car battery voltage in volts. The unit is a strong inference from the raw telemetry (not officially documented by 70mai); the entity attributes flag this via `unit_confirmed: false`. |
-| `event`          | *Device* Alarm           | Fires a generic `alarm` event per new alarm, with the raw alarm payload as an attribute (specific alarm-type meanings aren't confirmed yet). |
+| Platform         | Entity                            | Notes |
+| ---------------- | ---------------------------------- | ----- |
+| `device_tracker` | *Device* Position                  | GPS source, only created for devices that actually report a position. |
+| `sensor`         | *Device* Battery voltage            | Car battery voltage in volts. The unit is a strong inference from the raw telemetry (not officially documented by 70mai); the entity attributes flag this via `unit_confirmed: false`. |
+| `sensor`         | *Device* Last report                | Diagnostic timestamp of the last time the dashcam reported to the cloud (`getDashcamDetail`'s `device.reportTime`). |
+| `sensor`         | *Device* Status                     | Diagnostic passthrough of `getDashcamDetail`'s `deviceStatus` (plus `simPluginActiveStatus`/`geofenceActiveStatus` as attributes). Field names are confirmed but the exact value meaning isn't, so this exposes the raw value rather than an on/off state; flagged via `value_confirmed: false`. |
+| `sensor`         | *Device* Cellular firmware version | Diagnostic firmware version of the cellular add-on (`getSimPluginDetail`'s `pluginSoftwareVersion`, with IMEI as an attribute). Only created for devices that actually have a SIM plugin (detected empirically, like Position). |
+| `event`          | *Device* Alarm                      | Fires a generic `alarm` event per new alarm, with the raw alarm payload as an attribute (specific alarm-type meanings aren't confirmed yet). |
 
 Polling runs every 5 minutes by default.
 
@@ -102,8 +105,9 @@ Polling runs every 5 minutes by default.
 ## Work in progress
 
 - Options flow for scan interval / alarm filtering.
-- Additional entities from `70maiclient` methods not yet wired up (e.g.
-  device switches, value-added-service status). PRs welcome.
+- Additional entities from `70maiclient` methods whose response shape
+  isn't confirmed yet (e.g. device switches, value-added-service
+  status). PRs welcome.
 
 ## Other integrations by me
 

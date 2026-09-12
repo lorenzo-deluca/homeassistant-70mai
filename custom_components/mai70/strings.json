@@ -24,6 +24,15 @@
     "sensor": {
       "battery_voltage": {
         "name": "Battery voltage"
+      },
+      "last_report": {
+        "name": "Last report"
+      },
+      "status": {
+        "name": "Status"
+      },
+      "cellular_firmware": {
+        "name": "Cellular firmware version"
       }
     },
     "event": {

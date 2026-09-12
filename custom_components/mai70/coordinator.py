@@ -101,6 +101,8 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 "position": await self._async_get_position(device_id),
                 "battery_mv": await self._async_get_battery_mv(device_id),
                 "new_alarms": await self._async_get_new_alarms(device_id, begin_ms, now_ms),
+                "dashcam_detail": await self._async_get_dashcam_detail(device_id),
+                "cellular": await self._async_get_cellular_info(device_id),
             }
 
         self._last_poll_ms = now_ms
@@ -156,6 +158,39 @@ class Mai70Coordinator(DataUpdateCoordinator):
         if latest_sample is None:
             return None
         return latest_sample.get("latest")
+
+    async def _async_get_dashcam_detail(self, device_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            resp = await self.hass.async_add_executor_job(self.client.get_dashcam_detail, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("getDashcamDetail failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        if not isinstance(body, dict):
+            return None
+        device = body.get("device")
+        return {
+            "device_status": body.get("deviceStatus"),
+            "sim_plugin_active_status": body.get("simPluginActiveStatus"),
+            "geofence_active_status": body.get("geofenceActiveStatus"),
+            "report_time": device.get("reportTime") if isinstance(device, dict) else None,
+        }
+
+    async def _async_get_cellular_info(self, device_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            resp = await self.hass.async_add_executor_job(self.client.get_sim_plugin_detail, device_id)
+        except MaiError as exc:
+            _LOGGER.debug(
+                "getSimPluginDetail failed for %s (likely no cellular add-on): %s", device_id, exc
+            )
+            return None
+        body = resp.get("resultBodyObject")
+        if not isinstance(body, dict):
+            return None
+        software_version = body.get("pluginSoftwareVersion")
+        if not software_version:
+            return None
+        return {"software_version": software_version, "imei": body.get("imei")}
 
     async def _async_get_new_alarms(
         self, device_id: str, begin_ms: int, now_ms: int
