@@ -37,6 +37,7 @@ class Mai70AlarmEvent(Mai70Entity, EventEntity):
     _attr_translation_key = "alarm"
     _attr_name = None
     _attr_event_types = ["alarm"]
+    _attr_icon = "mdi:bell-alert-outline"
 
     def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id)

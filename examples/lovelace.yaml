@@ -1,0 +1,99 @@
+# Example Lovelace dashboard for the 70mai Dashcam integration.
+#
+# Usage: Settings -> Dashboards -> "+ Add dashboard" -> "New dashboard from
+# scratch" -> open it -> top-right "..." menu -> "Edit dashboard" -> "..."
+# menu again -> "Raw configuration editor" -> paste this whole file.
+#
+# Before pasting, replace every "dashcam" slug below with your own device's
+# entity slug (Settings -> Devices & Services -> 70mai Dashcam -> your
+# device -> each entity's ID starts with the same slug, e.g.
+# device_tracker.rearview_mirror_position,
+# sensor.rearview_mirror_battery_voltage, etc.). If you have more than one
+# dashcam, duplicate the cards below per device or add more entities to the
+# same cards.
+#
+# Everything here uses only built-in Lovelace cards (map, glance, entities,
+# history-graph, logbook) - no HACS frontend cards required. An optional
+# HACS-enhanced battery graph (mini-graph-card, the same card used by
+# https://github.com/noiwid/silence-scooter-homeassistant's dashboard) is
+# included at the bottom, commented out.
+
+title: 70mai Dashcam
+views:
+  - title: Dashcam
+    path: mai70
+    icon: mdi:cctv
+    type: masonry
+    cards:
+      # --- Position -----------------------------------------------------
+      - type: map
+        title: Position
+        default_zoom: 14
+        hours_to_show: 24
+        entities:
+          - entity: device_tracker.dashcam_position
+
+      # --- At-a-glance status --------------------------------------------
+      - type: glance
+        title: Status
+        columns: 3
+        entities:
+          - entity: sensor.dashcam_status
+            name: Status
+            icon: mdi:information-outline
+          - entity: sensor.dashcam_battery_voltage
+            name: Battery
+            icon: mdi:car-battery
+          - entity: sensor.dashcam_last_report
+            name: Last report
+
+      # --- Battery voltage trend (built-in, no HACS needed) --------------
+      - type: history-graph
+        title: Battery voltage (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.dashcam_battery_voltage
+            name: Battery voltage
+
+      # --- Connectivity / firmware diagnostics ----------------------------
+      - type: entities
+        title: Connectivity & firmware
+        entities:
+          - entity: sensor.dashcam_cellular_firmware
+            name: Cellular firmware
+            icon: mdi:antenna
+          - entity: sensor.dashcam_sim
+            name: SIM (IMEI)
+            icon: mdi:sim
+          - entity: sensor.dashcam_country
+            name: Account country
+            icon: mdi:flag
+          - entity: sensor.dashcam_firmware
+            name: Firmware version
+            icon: mdi:chip
+
+      # --- Alarm history (motion/impact events) ---------------------------
+      - type: logbook
+        title: Alarms
+        hours_to_show: 168
+        entities:
+          - entity: event.dashcam_alarm
+
+      # --- Optional: nicer battery graph via HACS mini-graph-card ---------
+      # Requires the "mini-graph-card" HACS frontend repository
+      # (https://github.com/kalkih/mini-graph-card), the same card used by
+      # noiwid/silence-scooter-homeassistant's battery panel. Uncomment to
+      # replace/augment the history-graph card above.
+      #
+      # - type: custom:mini-graph-card
+      #   name: Battery voltage
+      #   icon: mdi:car-battery
+      #   entities:
+      #     - entity: sensor.dashcam_battery_voltage
+      #   hours_to_show: 168
+      #   points_per_hour: 1
+      #   line_color: '#4eaf58'
+      #   show:
+      #     extrema: true
+      #     points: hover
+      #     average: true

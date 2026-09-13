@@ -33,6 +33,15 @@
       },
       "cellular_firmware": {
         "name": "Cellular firmware version"
+      },
+      "sim": {
+        "name": "SIM"
+      },
+      "country": {
+        "name": "Country"
+      },
+      "firmware": {
+        "name": "Firmware version"
       }
     },
     "event": {
