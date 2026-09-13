@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    ALARM_TYPES,
     BATTERY_KEY_INDEX,
     BATTERY_SMART_TYPE,
     DEFAULT_SCAN_INTERVAL,
@@ -29,9 +28,9 @@ _LOGGER = logging.getLogger(__name__)
 # fallbacks for an older/different device dict shape.
 _DEVICE_ID_KEYS = ("deviceId", "id")
 _DEVICE_NAME_KEYS = ("nickName", "ssid", "deviceId")
-# get_device_alarm_list()'s item schema isn't confirmed, so the id field
-# name is a best-effort guess.
-_ALARM_ID_KEYS = ("alarmId", "id")
+# get_device_alarm_list()'s confirmed item schema uses "id"; "alarmId" is
+# kept as a defensive fallback only.
+_ALARM_ID_KEYS = ("id", "alarmId")
 
 # get_all_device_for_user() pagination: page size to request, and a hard
 # cap on the number of pages fetched per poll so a cursor/API bug can't
@@ -170,6 +169,9 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 "cellular": await self._async_get_cellular_info(device_id),
                 "country_code": country_code,
                 "firmware": await self._async_get_firmware_info(device_id, device),
+                "network_status": await self._async_get_network_status(device_id),
+                "device_switch": await self._async_get_device_switch(device_id),
+                "sim_out_power": await self._async_get_sim_out_power(device_id),
             }
 
         self._last_poll_ms = now_ms
@@ -257,6 +259,11 @@ class Mai70Coordinator(DataUpdateCoordinator):
             "latitude": lat,
             "longitude": lng,
             "last_update_time": position.get("lastUpdateTime"),
+            # "status"'s meaning isn't documented; passed through raw.
+            "status": body.get("status"),
+            "park_pic_url": position.get("parkPicUrl"),
+            "park_pic_last_update_time": position.get("parkPicLastUpdateTime"),
+            "parking_photo_switch": position.get("parkingPhotoSwitch"),
         }
 
     async def _async_get_battery_mv(self, device_id: str) -> Optional[int]:
@@ -326,6 +333,57 @@ class Mai70Coordinator(DataUpdateCoordinator):
             "is_beta_device": body.get("isBetaDevice"),
         }
 
+    async def _async_get_network_status(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """getDashcamStatus is a separate, smaller endpoint from
+        getDashcamDetail - CONFIRMED response: {"status", "allowPullAlive",
+        "deviceNetworkLevel"}. "status"/"allowPullAlive" meanings aren't
+        documented (and may or may not overlap with getDashcamDetail's own
+        "deviceStatus"), so they're passed through raw; deviceNetworkLevel
+        is the one field with an obvious, useful meaning (signal level).
+        """
+        try:
+            resp = await self._async_call(self.client.get_dashcam_status, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("getDashcamStatus failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        if not isinstance(body, dict) or body.get("deviceNetworkLevel") is None:
+            return None
+        return {
+            "network_level": body.get("deviceNetworkLevel"),
+            "status": body.get("status"),
+            "allow_pull_alive": body.get("allowPullAlive"),
+        }
+
+    async def _async_get_device_switch(self, device_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            resp = await self._async_call(self.client.get_device_switch, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("getDeviceSwitch failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        if not isinstance(body, dict) or body.get("monitorVedioUpload") is None:
+            return None
+        return {
+            "monitor_video_upload": bool(body.get("monitorVedioUpload")),
+            "details": body.get("details"),
+        }
+
+    async def _async_get_sim_out_power(self, device_id: str) -> Optional[bool]:
+        """Whether the SIM/cellular add-on can supply power to keep the
+        dashcam running (e.g. for parking-mode surveillance) independent
+        of the car battery. Only meaningful for devices with that add-on,
+        so absence of a boolean result is treated like "no cellular
+        add-on" (same empirical gating as the other SIM-derived entities).
+        """
+        try:
+            resp = await self._async_call(self.client.sim_plugin_support_out_power, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("simPluginSupportOutPower failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        return bool(body) if isinstance(body, bool) else None
+
     async def _async_get_firmware_info(
         self, device_id: str, device_meta: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
@@ -377,12 +435,16 @@ class Mai70Coordinator(DataUpdateCoordinator):
         self, device_id: str, begin_ms: int, now_ms: int
     ) -> List[Dict[str, Any]]:
         try:
+            # No alarm_types filter: 70mai's own app doesn't filter its
+            # alarm-list screen by type either, and the confirmed observed
+            # types (101 collision, 104/105/107) don't match the guessed
+            # [105, 108] this used to send - that guess risked silently
+            # dropping real alarms like collisions (101).
             resp = await self._async_call(
                 self.client.get_device_alarm_list,
                 device_id,
                 begin_ms,
                 now_ms,
-                ALARM_TYPES,
             )
         except MaiError as exc:
             _LOGGER.debug("getDeviceAlarmList failed for %s: %s", device_id, exc)
@@ -400,5 +462,21 @@ class Mai70Coordinator(DataUpdateCoordinator):
             if alarm_id is None or alarm_id in seen:
                 continue
             seen.add(alarm_id)
-            new_alarms.append({"alarm_id": alarm_id, "raw": alarm})
+            new_alarms.append(
+                {
+                    "alarm_id": alarm_id,
+                    # alramType's exact meaning per code isn't confirmed
+                    # (101 is a collision alarm, seen with GPS + video; the
+                    # rest are unconfirmed guesses), so the code is passed
+                    # through as-is rather than mapped to a label.
+                    "alarm_type": alarm.get("alramType"),
+                    "happen_time": alarm.get("happenTime"),
+                    "latitude": alarm.get("coordinatesLat"),
+                    "longitude": alarm.get("coordinatesLng"),
+                    "picture_url": alarm.get("pictureUrl"),
+                    "video_url": alarm.get("videoUrl"),
+                    "cover_url": alarm.get("coverUrl"),
+                    "raw": alarm,
+                }
+            )
         return new_alarms

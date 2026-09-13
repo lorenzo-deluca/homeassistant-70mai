@@ -12,7 +12,13 @@ from client70mai import MaiClient
 from .const import CONF_UUID, DOMAIN
 from .coordinator import Mai70Coordinator
 
-PLATFORMS: list[Platform] = [Platform.DEVICE_TRACKER, Platform.SENSOR, Platform.EVENT]
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.DEVICE_TRACKER,
+    Platform.EVENT,
+    Platform.IMAGE,
+    Platform.SENSOR,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

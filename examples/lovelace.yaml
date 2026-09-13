@@ -13,10 +13,15 @@
 # same cards.
 #
 # Everything here uses only built-in Lovelace cards (map, glance, entities,
-# history-graph, logbook) - no HACS frontend cards required. An optional
-# HACS-enhanced battery graph (mini-graph-card, the same card used by
+# picture-entity, history-graph, logbook) - no HACS frontend cards
+# required. An optional HACS-enhanced battery graph (mini-graph-card, the
+# same card used by
 # https://github.com/noiwid/silence-scooter-homeassistant's dashboard) is
 # included at the bottom, commented out.
+#
+# Note: the "Parking photo" card and the SIM-only entities only show data
+# for devices that actually populate them (most don't) - remove the card
+# if your device never creates the corresponding entity.
 
 title: 70mai Dashcam
 views:
@@ -59,18 +64,32 @@ views:
       - type: entities
         title: Connectivity & firmware
         entities:
+          - entity: sensor.dashcam_network_level
+            name: Network level
+            icon: mdi:signal
           - entity: sensor.dashcam_cellular_firmware
             name: Cellular firmware
             icon: mdi:antenna
           - entity: sensor.dashcam_sim
             name: SIM (IMEI)
             icon: mdi:sim
+          - entity: binary_sensor.dashcam_sim_external_power_support
+            name: SIM external power support
+            icon: mdi:battery-charging-outline
           - entity: sensor.dashcam_country
             name: Account country
             icon: mdi:flag
           - entity: sensor.dashcam_firmware
             name: Firmware version
             icon: mdi:chip
+          - entity: binary_sensor.dashcam_monitor_video_upload
+            name: Monitor video upload
+            icon: mdi:cloud-upload-outline
+
+      # --- Parking photo (only shown if your device populates one) -------
+      - type: picture-entity
+        title: Parking photo
+        entity: image.dashcam_parking_photo
 
       # --- Alarm history (motion/impact events) ---------------------------
       - type: logbook

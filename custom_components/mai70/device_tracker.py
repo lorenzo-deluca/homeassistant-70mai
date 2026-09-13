@@ -53,4 +53,9 @@ class Mai70DeviceTracker(Mai70Entity, TrackerEntity):
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        return {"last_update_time": self._position.get("last_update_time")}
+        return {
+            "last_update_time": self._position.get("last_update_time"),
+            # getPosition's own "status" field, meaning not documented.
+            "status": self._position.get("status"),
+            "status_confirmed": False,
+        }

@@ -14,9 +14,6 @@ DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
 BATTERY_KEY_INDEX = "1.4"
 BATTERY_SMART_TYPE = 51
 
-# get_device_alarm_list() alarm_types filter.
-ALARM_TYPES = [105, 108]
-
 # check_new_rom_from_app() requires a client-reported base_version/
 # base_subversion to run the update check at all, but the version it
 # actually needs to report back the dashcam's current firmware

@@ -6,6 +6,6 @@
   "documentation": "https://github.com/lorenzo-deluca/homeassistant-70mai",
   "issue_tracker": "https://github.com/lorenzo-deluca/homeassistant-70mai/issues",
   "iot_class": "cloud_polling",
-  "requirements": ["70maiclient>=0.1.0"],
+  "requirements": ["70maiclient>=0.3.0"],
   "version": "0.1.0"
 }

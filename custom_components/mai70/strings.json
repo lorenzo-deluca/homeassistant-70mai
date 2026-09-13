@@ -42,6 +42,22 @@
       },
       "firmware": {
         "name": "Firmware version"
+      },
+      "network_level": {
+        "name": "Network level"
+      }
+    },
+    "binary_sensor": {
+      "monitor_video_upload": {
+        "name": "Monitor video upload"
+      },
+      "sim_out_power": {
+        "name": "SIM external power support"
+      }
+    },
+    "image": {
+      "parking_photo": {
+        "name": "Parking photo"
       }
     },
     "event": {

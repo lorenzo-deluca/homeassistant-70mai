@@ -66,11 +66,17 @@ and which entities showed up** - that's the only way this table (and the
 - **`device_tracker`**: live GPS position for any cloud-connected
   dashcam on the account.
 - **`sensor`**: car battery voltage (from telemetry history), last
-  report time, raw device/SIM/geofence status, cellular modem firmware
-  version, SIM IMEI, account country, and the dashcam's current
-  firmware version.
-- **`event`**: fires whenever a new dashcam alarm (motion/impact
-  detection, etc.) is reported.
+  report time, raw device/SIM/geofence status, network signal level,
+  cellular modem firmware version, SIM IMEI, account country, and the
+  dashcam's current firmware version.
+- **`binary_sensor`**: whether the monitor-video cloud-upload switch is
+  on, and whether the SIM/cellular add-on can power the dashcam on its
+  own (parking-mode surveillance without the car battery).
+- **`image`**: the latest parking-mode snapshot, for the (few) devices
+  that actually take one.
+- **`event`**: fires whenever a new dashcam alarm (collision, motion,
+  etc.) is reported, with the alarm type, GPS position, and any
+  picture/video URLs attached.
 
 All of these are added automatically for every device found on the
 account, no manual entity configuration needed.
@@ -151,15 +157,19 @@ falling back to its WiFi SSID):
 
 | Platform         | Entity                            | Notes |
 | ---------------- | ---------------------------------- | ----- |
-| `device_tracker` | *Device* Position                  | GPS source, only created for devices that actually report a position. |
+| `device_tracker` | *Device* Position                  | GPS source, only created for devices that actually report a position. Also carries `getPosition`'s raw, undocumented `status` field as an attribute. |
 | `sensor`         | *Device* Battery voltage            | Car battery voltage in volts. The unit is a strong inference from the raw telemetry (not officially documented by 70mai); the entity attributes flag this via `unit_confirmed: false`. |
 | `sensor`         | *Device* Last report                | Diagnostic timestamp of the last time the dashcam reported to the cloud (`getDashcamDetail`'s `device.reportTime`). |
 | `sensor`         | *Device* Status                     | Diagnostic passthrough of `getDashcamDetail`'s `deviceStatus` (plus `simPluginActiveStatus`/`geofenceActiveStatus` as attributes). Field names are confirmed but the exact value meaning isn't, so this exposes the raw value rather than an on/off state; flagged via `value_confirmed: false`. |
+| `sensor`         | *Device* Network level              | Diagnostic signal level from `getDashcamStatus` (a different, smaller endpoint than Status above), with its `status`/`allowPullAlive` fields as unconfirmed attributes. |
 | `sensor`         | *Device* Cellular firmware version | Diagnostic firmware version of the cellular add-on (`getSimPluginDetail`'s `pluginSoftwareVersion`, with the sub-version as an attribute). Only created for devices that actually have a SIM plugin (detected empirically, like Position). |
 | `sensor`         | *Device* SIM                        | Diagnostic SIM identity: IMEI as the state, plugin device id and beta-device flag as attributes (`getSimPluginDetail`). Same 4G-only gating as Cellular firmware version. |
 | `sensor`         | *Device* Country                    | Diagnostic account country code (`getUserCountryCode`). Account-level, so the same value is shown on every device on the account. |
 | `sensor`         | *Device* Firmware version            | Diagnostic current firmware version installed on the dashcam (`checkNewRomFromApp`'s `resultBodyObject.version`, confirmed to report the device's own installed firmware rather than the request's `base_version`), with release notes/date/size as attributes. |
-| `event`          | *Device* Alarm                      | Fires a generic `alarm` event per new alarm, with the raw alarm payload as an attribute (specific alarm-type meanings aren't confirmed yet). |
+| `binary_sensor`  | *Device* Monitor video upload        | Diagnostic, read-only state of the monitor-video cloud-upload switch (`getDeviceSwitch`'s `monitorVedioUpload`), with the per-event-type resource key config as an attribute. Toggling it still requires the 70mai app. |
+| `binary_sensor`  | *Device* SIM external power support  | Diagnostic: whether the cellular add-on can power the dashcam on its own, e.g. for parking-mode surveillance without the car battery (`simPluginSupportOutPower`). Same 4G-only gating as the other SIM entities. |
+| `image`          | *Device* Parking photo               | The latest parking-mode snapshot (`getPosition`'s `parkPicUrl`). Only created for the (few) devices that actually populate it. |
+| `event`          | *Device* Alarm                      | Fires a generic `alarm` event per new alarm (collision, motion, etc. - the exact meaning of most alarm-type codes still isn't confirmed, only 101/collision is), with type, time, GPS position, and picture/video URLs as event data, plus the raw alarm payload. No longer filtered to a guessed alarm-type list, so it won't silently miss alarm types outside that guess (a bug in earlier versions). |
 
 Polling runs every 5 minutes by default.
 
@@ -217,9 +227,14 @@ Two things to know when pairing it with this integration:
 ## Work in progress
 
 - Options flow for scan interval / alarm filtering.
-- Additional entities from `70maiclient` methods whose response shape
-  isn't confirmed yet (e.g. device switches, value-added-service
-  status). PRs welcome.
+- A way to actually change the monitor-video-upload switch from Home
+  Assistant (`setDeviceSwitch`) - currently read-only.
+- Alarm video/picture clips as local media instead of just the raw COS
+  URL (`get_file_details()`/`download_media()`).
+- A handful of confirmed-but-intentionally-skipped endpoints (account
+  profile data, notification overview, value-added-service status) -
+  see `CLAUDE.md` for why each was left out. PRs welcome if you disagree
+  with one of those calls.
 
 ## Other integrations by me
 

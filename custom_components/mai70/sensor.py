@@ -62,6 +62,12 @@ async def async_setup_entry(
         entity_factory=lambda device_id: Mai70FirmwareVersionSensor(coordinator, device_id),
         should_add=lambda data: (data.get("firmware") or {}).get("version") is not None,
     )
+    async_setup_dynamic_entities(
+        coordinator,
+        async_add_entities,
+        entity_factory=lambda device_id: Mai70NetworkLevelSensor(coordinator, device_id),
+        should_add=lambda data: (data.get("network_status") or {}).get("network_level") is not None,
+    )
 
 
 class Mai70BatterySensor(Mai70Entity, SensorEntity):
@@ -264,4 +270,38 @@ class Mai70FirmwareVersionSensor(Mai70Entity, SensorEntity):
             else None,
             "file_size": self._firmware.get("file_size"),
             "device_category_confirmed": False,
+        }
+
+
+class Mai70NetworkLevelSensor(Mai70Entity, SensorEntity):
+    """Network signal level, from getDashcamStatus's confirmed
+    deviceNetworkLevel field (a separate, smaller endpoint from
+    getDashcamDetail). "status"/"allowPullAlive" from the same response
+    are exposed as attributes since their meaning isn't documented.
+    """
+
+    _attr_translation_key = "network_level"
+    _attr_name = None
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:signal"
+
+    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_network_level"
+
+    @property
+    def _network_status(self) -> Dict[str, Any]:
+        return self._device_data.get("network_status") or {}
+
+    @property
+    def native_value(self) -> Optional[int]:
+        return self._network_status.get("network_level")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return {
+            "status": self._network_status.get("status"),
+            "allow_pull_alive": self._network_status.get("allow_pull_alive"),
+            "status_and_allow_pull_alive_confirmed": False,
         }

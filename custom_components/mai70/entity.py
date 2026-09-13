@@ -1,11 +1,11 @@
 """Shared entity base and dynamic-entity-discovery helper for the 70mai
 integration.
 
-All three platforms (device_tracker, sensor, event) discover their
-entities the same way: a 70mai account can have devices bound to it after
-HA has already started, so entities for a given device_id are added the
-first time the coordinator's data satisfies a platform-specific predicate,
-not just once at platform setup.
+All platforms (device_tracker, sensor, binary_sensor, image, event)
+discover their entities the same way: a 70mai account can have devices
+bound to it after HA has already started, so entities for a given
+device_id are added the first time the coordinator's data satisfies a
+platform-specific predicate, not just once at platform setup.
 """
 from __future__ import annotations
 
