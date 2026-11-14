@@ -6,6 +6,33 @@ from datetime import timedelta
 DOMAIN = "mai70"
 
 CONF_UUID = "uuid"
+# Config-entry key holding the resolved 70mai API base URL. Entries created
+# before region support don't have it and keep using SERVER_EU.
+CONF_BASE_URL = "base_url"
+# Config-flow-only field: one of SERVER_CHOICES' keys, SERVER_AUTO, or a
+# server address typed by hand (the selector accepts custom values).
+CONF_SERVER = "server"
+
+# 70mai account data lives on one regional server, and a login against the
+# wrong one fails like a bad password. Known hosts (2026-11):
+# - eu: the one every request in client70mai's captures went to.
+# - int: the 70mai app's built-in default (assets/config/app_config.json
+#   in the 4.0.0 APK); confirmed working by an Australian user (issue #2).
+# - us: answers like a 70mai API to an anonymous probe, but no user has
+#   confirmed logging in there yet.
+# The app itself learns its real server at runtime from a downloaded
+# config, so this list may be incomplete; that's why the config flow also
+# accepts a server address typed by hand.
+SERVER_EU = "https://eu-api.70mai.com"
+SERVER_INT = "https://int-api.70mai.com"
+SERVER_US = "https://us-api.70mai.com"
+SERVER_AUTO = "auto"
+# Also the order SERVER_AUTO tries them in.
+SERVER_CHOICES = {
+    "eu": SERVER_EU,
+    "int": SERVER_INT,
+    "us": SERVER_US,
+}
 
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
 

@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 
 from client70mai import MaiClient
 
-from .const import CONF_UUID, DOMAIN
+from .const import CONF_BASE_URL, CONF_UUID, DOMAIN, SERVER_EU
 from .coordinator import Mai70Coordinator
 
 PLATFORMS: list[Platform] = [
@@ -24,7 +24,11 @@ PLATFORMS: list[Platform] = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up 70mai from a config entry."""
     device_uuid = entry.data.get(CONF_UUID) or str(uuid_module.uuid4()).upper()
-    client = MaiClient(uuid=device_uuid)
+    # Entries from before region support have no base URL: they were all
+    # created against the EU server.
+    client = MaiClient(
+        uuid=device_uuid, base_url=entry.data.get(CONF_BASE_URL, SERVER_EU)
+    )
 
     coordinator = Mai70Coordinator(
         hass, client, entry.data[CONF_EMAIL], entry.data[CONF_PASSWORD]
