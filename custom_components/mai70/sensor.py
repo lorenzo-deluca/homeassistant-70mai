@@ -4,10 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfElectricPotential
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
@@ -20,11 +26,19 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: Mai70Coordinator = hass.data[DOMAIN][entry.entry_id]
+    registry = er.async_get(hass)
     async_setup_dynamic_entities(
         coordinator,
         async_add_entities,
         entity_factory=lambda device_id: Mai70BatterySensor(coordinator, device_id),
         should_add=lambda data: data.get("battery_mv") is not None,
+        # Once a device has reported its battery, keep the sensor across
+        # restarts even if no sample is available right now (issue #6):
+        # otherwise HA shows it as "no longer provided".
+        already_registered=lambda device_id: registry.async_get_entity_id(
+            "sensor", DOMAIN, battery_unique_id(device_id)
+        )
+        is not None,
     )
     async_setup_dynamic_entities(
         coordinator,
@@ -70,10 +84,26 @@ async def async_setup_entry(
     )
 
 
-class Mai70BatterySensor(Mai70Entity, SensorEntity):
+def battery_unique_id(device_id: str) -> str:
+    return f"{device_id}_battery_voltage"
+
+
+def _ts_to_datetime(ts: Optional[int]) -> Optional[datetime]:
+    if not ts:
+        return None
+    # 70mai timestamps are epoch milliseconds; tolerate seconds too.
+    return dt_util.utc_from_timestamp(ts / 1000 if ts > 10**11 else ts)
+
+
+class Mai70BatterySensor(Mai70Entity, RestoreSensor):
     """Car battery voltage, read from getDeviceStatusHistoryDaily's
     keyIndex "1.4" (millivolts, not officially documented; see
     client70mai.client.MaiClient.get_device_status_history_daily).
+
+    A dashcam only reports this while powered, so many polls find no new
+    sample. The sensor keeps showing the last reading it got (also across
+    restarts, via RestoreSensor) instead of going unknown, and exposes when
+    that reading was taken as the "last_sample" attribute.
     """
 
     _attr_translation_key = "battery_voltage"
@@ -86,16 +116,53 @@ class Mai70BatterySensor(Mai70Entity, SensorEntity):
 
     def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id)
-        self._attr_unique_id = f"{device_id}_battery_voltage"
+        self._attr_unique_id = battery_unique_id(device_id)
+        self._value: Optional[float] = None
+        self._sample_ts: Optional[int] = None
+        self._update_from_coordinator()
+
+    def _update_from_coordinator(self) -> None:
+        battery_mv = self._device_data.get("battery_mv")
+        if battery_mv is not None:
+            self._value = battery_mv / 1000
+            self._sample_ts = self._device_data.get("battery_ts")
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if self._value is not None:
+            return
+        last_data = await self.async_get_last_sensor_data()
+        if last_data is None or last_data.native_value is None:
+            return
+        try:
+            self._value = float(last_data.native_value)
+        except (TypeError, ValueError):
+            return
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            last_sample = dt_util.parse_datetime(
+                str(last_state.attributes.get("last_sample") or "")
+            )
+            if last_sample is not None:
+                self._sample_ts = int(last_sample.timestamp() * 1000)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._update_from_coordinator()
+        super()._handle_coordinator_update()
 
     @property
     def native_value(self) -> Optional[float]:
-        battery_mv = self._device_data.get("battery_mv")
-        return battery_mv / 1000 if battery_mv is not None else None
+        return self._value
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        return {"raw_key_index": BATTERY_KEY_INDEX, "unit_confirmed": False}
+        last_sample = _ts_to_datetime(self._sample_ts)
+        return {
+            "last_sample": last_sample.isoformat() if last_sample else None,
+            "raw_key_index": BATTERY_KEY_INDEX,
+            "unit_confirmed": False,
+        }
 
 
 class Mai70LastReportSensor(Mai70Entity, SensorEntity):

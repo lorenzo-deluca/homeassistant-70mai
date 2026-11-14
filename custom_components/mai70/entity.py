@@ -9,7 +9,7 @@ platform-specific predicate, not just once at platform setup.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Set, Union
+from typing import Any, Callable, Dict, Optional, Set, Union
 
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -56,16 +56,26 @@ def async_setup_dynamic_entities(
     async_add_entities: AddEntitiesCallback,
     entity_factory: Callable[[str], Entity],
     should_add: Callable[[Dict[str, Any]], bool] = lambda data: True,
+    already_registered: Optional[Callable[[str], bool]] = None,
 ) -> None:
     """Add an entity for each device_id the first time it satisfies
-    `should_add`, and keep watching for devices that qualify later."""
+    `should_add`, and keep watching for devices that qualify later.
+
+    `already_registered(device_id)`, if given, also adds the entity when it
+    returns True (typically: the entity is already in the entity registry),
+    so an entity that qualified once isn't dropped after a restart just
+    because the data isn't there on the first poll."""
     known_ids: Set[str] = set()
 
     @callback
     def _check_new_devices() -> None:
         new_entities = []
         for device_id, data in coordinator.data.items():
-            if device_id in known_ids or not should_add(data):
+            if device_id in known_ids:
+                continue
+            if not should_add(data) and not (
+                already_registered is not None and already_registered(device_id)
+            ):
                 continue
             known_ids.add(device_id)
             new_entities.append(entity_factory(device_id))
