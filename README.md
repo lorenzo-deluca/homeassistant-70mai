@@ -171,7 +171,19 @@ falling back to its WiFi SSID):
 | `image`          | *Device* Parking photo               | The latest parking-mode snapshot (`getPosition`'s `parkPicUrl`). Only created for the (few) devices that actually populate it. |
 | `event`          | *Device* Alarm                      | Fires a generic `alarm` event per new alarm (collision, motion, etc. - the exact meaning of most alarm-type codes still isn't confirmed, only 101/collision is), with type, time, GPS position, and picture/video URLs as event data, plus the raw alarm payload. No longer filtered to a guessed alarm-type list, so it won't silently miss alarm types outside that guess (a bug in earlier versions). |
 
-Polling runs every 5 minutes by default.
+Polling runs every 5 minutes by default, except for the GPS position
+(and the parking photo, which comes from the same API call). Those have
+their own lighter, adaptive poll:
+
+- **every 60 seconds** while the dashcam is driving, i.e. while its last
+  reported position is at most 3 minutes old;
+- **every 2 minutes** otherwise (parked, or no position yet), so the start
+  of a new trip is picked up within about 2 minutes.
+
+Only the position call speeds up. The other ~10 calls per device stay on
+the 5-minute poll. If a position poll fails (e.g. a network blip), the
+tracker keeps the last known position instead of going blank. Its
+`last_update_time` attribute shows how old that position is.
 
 ## Example Lovelace dashboard
 

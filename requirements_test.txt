@@ -1,0 +1,6 @@
+# Test-only dependencies (the integration's own runtime requirement,
+# 70maiclient, isn't installed by Home Assistant's test harness, so it's
+# listed here too). pytest-homeassistant-custom-component pins a matching
+# homeassistant release; 0.13.316 = Home Assistant 2026.2.3 (Python 3.13).
+pytest-homeassistant-custom-component==0.13.316
+70maiclient>=0.3.0

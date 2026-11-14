@@ -11,14 +11,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import Mai70Coordinator
+from .coordinator import Mai70Coordinator, Mai70PositionCoordinator
 from .entity import Mai70Entity, async_setup_dynamic_entities
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: Mai70Coordinator = hass.data[DOMAIN][entry.entry_id]
+    main: Mai70Coordinator = hass.data[DOMAIN][entry.entry_id]
+    # parkPicUrl comes from getPosition, so this follows the position poll.
+    coordinator = main.position_coordinator
     async_setup_dynamic_entities(
         coordinator,
         async_add_entities,
@@ -37,7 +39,9 @@ class Mai70ParkingPhotoImage(Mai70Entity, ImageEntity):
     _attr_name = None
     _attr_icon = "mdi:image-outline"
 
-    def __init__(self, coordinator: Mai70Coordinator, device_id: str, hass: HomeAssistant) -> None:
+    def __init__(
+        self, coordinator: Mai70PositionCoordinator, device_id: str, hass: HomeAssistant
+    ) -> None:
         Mai70Entity.__init__(self, coordinator, device_id)
         ImageEntity.__init__(self, hass)
         self._attr_unique_id = f"{device_id}_parking_photo"

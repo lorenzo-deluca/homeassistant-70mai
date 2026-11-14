@@ -1,6 +1,7 @@
-"""Data update coordinator for the 70mai integration."""
+"""Data update coordinators for the 70mai integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import date, datetime, timedelta
@@ -16,6 +17,9 @@ from .const import (
     DOMAIN,
     FIRMWARE_CHECK_BASE_SUBVERSION,
     FIRMWARE_CHECK_BASE_VERSION,
+    POSITION_ACTIVE_MAX_AGE,
+    POSITION_SCAN_INTERVAL_ACTIVE,
+    POSITION_SCAN_INTERVAL_IDLE,
     TOKEN_INVALID_RELOGIN_DELAY,
 )
 from client70mai import MaiClient
@@ -86,31 +90,41 @@ class Mai70Coordinator(DataUpdateCoordinator):
         # monotonic timestamp of the last detected session invalidation
         # (see _on_session_invalidated), or None if the session is fine.
         self._token_invalid_since: Optional[float] = None
+        # The position coordinator shares this client, so both can be
+        # mid-update at once. Every API call and login goes through this
+        # lock: MaiClient isn't documented as thread-safe (one shared
+        # requests.Session, and a millisecond "ts" two simultaneous calls
+        # could duplicate), and two concurrent logins would each mint a new
+        # token while 70mai keeps only one session per account alive - the
+        # second login would invalidate the first.
+        self._api_lock = asyncio.Lock()
+        self.position_coordinator = Mai70PositionCoordinator(hass, self)
 
     async def _async_ensure_logged_in(self) -> None:
-        if self.client.token:
-            return
-        if self._token_invalid_since is not None:
-            remaining = TOKEN_INVALID_RELOGIN_DELAY.total_seconds() - (
-                time.monotonic() - self._token_invalid_since
-            )
-            if remaining > 0:
-                raise MaiNotAuthenticatedError(
-                    "Waiting "
-                    f"{remaining:.0f}s more before logging back in after 70mai "
-                    "invalidated this session (see the earlier warning) - "
-                    "logging in again too soon would just kick out whatever "
-                    "else is currently using the account."
+        async with self._api_lock:
+            if self.client.token:
+                return
+            if self._token_invalid_since is not None:
+                remaining = TOKEN_INVALID_RELOGIN_DELAY.total_seconds() - (
+                    time.monotonic() - self._token_invalid_since
                 )
-        await self.hass.async_add_executor_job(
-            self.client.login, self._email, self._plain_password
-        )
-        if self._token_invalid_since is not None:
-            _LOGGER.warning(
-                "70mai login succeeded again after the earlier session "
-                "invalidation; back to polling normally."
+                if remaining > 0:
+                    raise MaiNotAuthenticatedError(
+                        "Waiting "
+                        f"{remaining:.0f}s more before logging back in after 70mai "
+                        "invalidated this session (see the earlier warning) - "
+                        "logging in again too soon would just kick out whatever "
+                        "else is currently using the account."
+                    )
+            await self.hass.async_add_executor_job(
+                self.client.login, self._email, self._plain_password
             )
-            self._token_invalid_since = None
+            if self._token_invalid_since is not None:
+                _LOGGER.warning(
+                    "70mai login succeeded again after the earlier session "
+                    "invalidation; back to polling normally."
+                )
+                self._token_invalid_since = None
 
     def _on_session_invalidated(self, resp: Dict[str, Any]) -> None:
         self.client.token = None
@@ -136,7 +150,8 @@ class Mai70Coordinator(DataUpdateCoordinator):
         (see _on_session_invalidated) on top of whatever MaiError the
         call itself can already raise.
         """
-        resp = await self.hass.async_add_executor_job(func, *args)
+        async with self._api_lock:
+            resp = await self.hass.async_add_executor_job(func, *args)
         if _is_session_invalidated(resp):
             self._on_session_invalidated(resp)
             raise MaiNotAuthenticatedError(
@@ -162,7 +177,7 @@ class Mai70Coordinator(DataUpdateCoordinator):
             result[device_id] = {
                 "meta": device,
                 "name": _first_present(device, _DEVICE_NAME_KEYS) or device_id,
-                "position": await self._async_get_position(device_id),
+                # No "position" here: Mai70PositionCoordinator polls it.
                 "battery_mv": await self._async_get_battery_mv(device_id),
                 "new_alarms": await self._async_get_new_alarms(device_id, begin_ms, now_ms),
                 "dashcam_detail": await self._async_get_dashcam_detail(device_id),
@@ -480,3 +495,82 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 }
             )
         return new_alarms
+
+
+def _position_scan_interval(
+    data: Dict[str, Dict[str, Any]], now_ms: float
+) -> timedelta:
+    """POSITION_SCAN_INTERVAL_ACTIVE while any device's position is fresh
+    (it's driving and pushing updates to 70mai's cloud), else
+    POSITION_SCAN_INTERVAL_IDLE. See const.py for why lastUpdateTime's age
+    is the signal rather than getPosition's undocumented "status".
+    """
+    max_age_ms = POSITION_ACTIVE_MAX_AGE.total_seconds() * 1000
+    for device in data.values():
+        last_update = (device.get("position") or {}).get("last_update_time")
+        if isinstance(last_update, (int, float)) and now_ms - last_update <= max_age_ms:
+            return POSITION_SCAN_INTERVAL_ACTIVE
+    return POSITION_SCAN_INTERVAL_IDLE
+
+
+class Mai70PositionCoordinator(DataUpdateCoordinator):
+    """Polls only getPosition, more often than Mai70Coordinator and
+    adaptively (see _position_scan_interval).
+
+    A separate coordinator rather than refreshing position inside
+    Mai70Coordinator more often: every listener of a coordinator is
+    notified on each of its updates (the alarm event entity, for one,
+    would re-fire its new_alarms), and re-fetching the whole ~10-endpoint
+    payload every minute just for the position would be wasteful. Device
+    discovery, login and the session-invalidation cooldown all stay with
+    Mai70Coordinator; this one only reuses them.
+
+    data: {device_id: {"name": str, "position": Optional[dict]}} - the
+    same "name"/"position" keys Mai70Coordinator's own data used to
+    carry, so the entities reading it (device_tracker, image) work with
+    either.
+    """
+
+    def __init__(self, hass: HomeAssistant, main: Mai70Coordinator) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN}_position",
+            update_interval=POSITION_SCAN_INTERVAL_IDLE,
+            # Don't wake the tracker/image entities when nothing moved.
+            always_update=False,
+        )
+        self._main = main
+
+    async def _async_update_data(self) -> Dict[str, Dict[str, Any]]:
+        try:
+            await self._main._async_ensure_logged_in()
+        except MaiError as exc:
+            raise UpdateFailed(str(exc)) from exc
+
+        previous = self.data or {}
+        result: Dict[str, Dict[str, Any]] = {}
+        for device_id, device in (self._main.data or {}).items():
+            position = await self._main._async_get_position(device_id)
+            if position is None:
+                # A failed/empty getPosition (a transient error is more
+                # likely now that this polls every minute) keeps the last
+                # known fix instead of blanking the tracker; its
+                # last_update_time still says how old it is.
+                position = (previous.get(device_id) or {}).get("position")
+            result[device_id] = {
+                "name": device.get("name", device_id),
+                "position": position,
+            }
+
+        if not self._main.client.token:
+            # 70mai invalidated the session mid-poll (_async_get_position
+            # swallows that like any other MaiError): don't report the
+            # possibly-stale positions as a successful update.
+            raise UpdateFailed("70mai invalidated this session during the position poll")
+
+        interval = _position_scan_interval(result, time.time() * 1000)
+        if interval != self.update_interval:
+            _LOGGER.debug("Position poll interval changed to %s", interval)
+            self.update_interval = interval
+        return result

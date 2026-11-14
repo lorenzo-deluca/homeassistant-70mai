@@ -9,14 +9,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import Mai70Coordinator
+from .coordinator import Mai70Coordinator, Mai70PositionCoordinator
 from .entity import Mai70Entity, async_setup_dynamic_entities
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: Mai70Coordinator = hass.data[DOMAIN][entry.entry_id]
+    main: Mai70Coordinator = hass.data[DOMAIN][entry.entry_id]
+    # Fed by the faster, adaptive position poll, not the 5-minute one.
+    coordinator = main.position_coordinator
     async_setup_dynamic_entities(
         coordinator,
         async_add_entities,
@@ -31,7 +33,7 @@ class Mai70DeviceTracker(Mai70Entity, TrackerEntity):
     _attr_translation_key = "position"
     _attr_name = None
 
-    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+    def __init__(self, coordinator: Mai70PositionCoordinator, device_id: str) -> None:
         super().__init__(coordinator, device_id)
         self._attr_unique_id = f"{device_id}_position"
 

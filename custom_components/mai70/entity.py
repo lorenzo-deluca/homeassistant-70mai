@@ -9,7 +9,7 @@ platform-specific predicate, not just once at platform setup.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Set
+from typing import Any, Callable, Dict, Set, Union
 
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -18,15 +18,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, MANUFACTURER
-from .coordinator import Mai70Coordinator
+from .coordinator import Mai70Coordinator, Mai70PositionCoordinator
+
+# Both keep {device_id: {"name": ..., ...}}, which is all this module reads.
+AnyMai70Coordinator = Union[Mai70Coordinator, Mai70PositionCoordinator]
 
 
-class Mai70Entity(CoordinatorEntity[Mai70Coordinator]):
+class Mai70Entity(CoordinatorEntity[AnyMai70Coordinator]):
     """Base entity tying a 70mai device_id to one HA device."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+    def __init__(self, coordinator: AnyMai70Coordinator, device_id: str) -> None:
         super().__init__(coordinator)
         self._device_id = device_id
 
@@ -49,7 +52,7 @@ class Mai70Entity(CoordinatorEntity[Mai70Coordinator]):
 
 
 def async_setup_dynamic_entities(
-    coordinator: Mai70Coordinator,
+    coordinator: AnyMai70Coordinator,
     async_add_entities: AddEntitiesCallback,
     entity_factory: Callable[[str], Entity],
     should_add: Callable[[Dict[str, Any]], bool] = lambda data: True,
