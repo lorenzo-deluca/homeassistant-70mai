@@ -2,14 +2,21 @@
   "config": {
     "step": {
       "user": {
+        "description": "Log in with your 70mai account (the same one used in the mobile app).",
         "data": {
           "email": "Email",
-          "password": "Password"
+          "password": "Password",
+          "server": "Server"
+        },
+        "data_description": {
+          "server": "The 70mai server your account is registered on. Automatic tries Europe, Global and USA in turn. You can also type a server address, e.g. https://int-api.70mai.com."
         }
       }
     },
     "error": {
-      "invalid_auth": "Login failed. Check your email and password."
+      "invalid_auth": "Login failed. Check your email and password, and that the selected server matches the region your account is registered in.",
+      "cannot_connect": "Could not reach the 70mai server. Check the server address and your network connection.",
+      "invalid_server": "Not a valid server address. Use a host name or an http(s) URL, e.g. https://int-api.70mai.com."
     },
     "abort": {
       "already_configured": "This 70mai account is already configured."
@@ -63,6 +70,16 @@
     "event": {
       "alarm": {
         "name": "Alarm"
+      }
+    }
+  },
+  "selector": {
+    "server": {
+      "options": {
+        "auto": "Automatic (try every known server)",
+        "eu": "Europe (eu-api.70mai.com)",
+        "int": "Global (int-api.70mai.com)",
+        "us": "USA (us-api.70mai.com, unconfirmed)"
       }
     }
   }

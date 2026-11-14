@@ -8,7 +8,7 @@
 
 > Bring your 70mai dashcam's GPS position, car battery voltage and alarms into [Home Assistant](https://www.home-assistant.io/).
 
-This custom component talks to the 70mai cloud API (`eu-api.70mai.com`) and turns it into native Home Assistant entities, so you don't need the
+This custom component talks to the 70mai cloud API (`eu-api.70mai.com`, `int-api.70mai.com`, ... depending on your account's region) and turns it into native Home Assistant entities, so you don't need the
 app open to see where your car is, how the battery's holding up, or that an alarm just fired. 
 If it's useful to you, a :coffee: or a GitHub :star: is always appreciated, thanks! :blush:
 
@@ -27,7 +27,7 @@ If someone from 70mai would like to contribute or collaborate please contact me 
 ## Supported devices
 
 Every call this integration makes goes through 70mai's **cloud** API
-(`eu-api.70mai.com`), not a local/Bluetooth/WiFi-direct connection. That
+(see [Server / region](#server--region)), not a local/Bluetooth/WiFi-direct connection. That
 means a dashcam only shows up with useful data here if it can talk to
 70mai's cloud on its own, which in practice requires the **4G/cellular
 add-on module** (the SIM plugin 70mai sells alongside some dashcam
@@ -111,6 +111,30 @@ Configuration is done entirely from the UI, there's no YAML setup.
    Integration** and search for **70mai Dashcam**.
 2. Enter the email and password of your 70mai account (the same one used
    in the mobile app).
+3. Pick the **Server** your account is registered on, or leave it on
+   **Automatic** (see below).
+
+### Server / region
+
+70mai keeps each account on one regional server, and logging in against
+the wrong one fails exactly like a wrong password. The **Server** field
+offers:
+
+| Option | Server | Status |
+|---|---|---|
+| Automatic (default) | tries Europe, Global, USA in turn and keeps the first that accepts the login | |
+| Europe | `https://eu-api.70mai.com` | confirmed |
+| Global | `https://int-api.70mai.com` | confirmed (the 70mai app's built-in default; works e.g. for Australia) |
+| USA | `https://us-api.70mai.com` | live 70mai server, not yet confirmed by a user |
+
+You can also **type any server address** in the same field (e.g.
+`int-api.70mai.com` or `https://int-api.70mai.com`) if your account lives
+on a server not listed above. If you find one that works, please open an
+issue so it can be added. The same applies if Home Assistant's log shows a
+`confFileUrl=...` line after setup: that's the 70mai app's own
+"which server to use" hint, and sharing it helps support more regions.
+
+Configs set up before this option existed keep using the Europe server.
 
 Every dashcam bound to that account is discovered automatically and shows
 up as its own Home Assistant device.
