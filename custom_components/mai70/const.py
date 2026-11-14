@@ -9,6 +9,21 @@ CONF_UUID = "uuid"
 
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
 
+# getPosition has its own faster, adaptive poll
+# (coordinator.Mai70PositionCoordinator) instead of riding along with the
+# DEFAULT_SCAN_INTERVAL poll of every other endpoint. A dashcam that is
+# driving keeps pushing its position to 70mai's cloud every few seconds
+# (lastUpdateTime was ~11s old in a capture taken while driving), a parked
+# one stops (~10 min old in a parked capture), so the age of the newest
+# lastUpdateTime picks the interval: ACTIVE while any device's position is
+# at most POSITION_ACTIVE_MAX_AGE old, IDLE otherwise.
+# getPosition's own "status" field (2 while driving, 3 while parked in
+# those same two captures) looks like it says the same thing, but its
+# meaning isn't documented, so the confirmed timestamp is used instead.
+POSITION_SCAN_INTERVAL_ACTIVE = timedelta(seconds=60)
+POSITION_SCAN_INTERVAL_IDLE = timedelta(minutes=2)
+POSITION_ACTIVE_MAX_AGE = timedelta(minutes=3)
+
 # get_device_status_history_daily() keyIndex/smartType for battery voltage
 # telemetry (see client70mai.client.MaiClient docstring for details).
 BATTERY_KEY_INDEX = "1.4"
