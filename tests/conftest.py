@@ -68,9 +68,10 @@ def position_body(
 
 class FakeMaiClient:
     """Stands in for client70mai.MaiClient. login/getAllDeviceForUser/
-    getPosition return what the test sets on `devices`/`positions`; every
-    other endpoint returns an empty successful envelope, which the
-    coordinator treats as "no data" for that entity.
+    getPosition return what the test sets on `devices`/`positions`; any
+    other endpoint returns `responses[method_name]` as its resultBodyObject
+    if set (an Exception is raised instead), else an empty successful
+    envelope, which the coordinator treats as "no data" for that entity.
 
     A `positions` value can also be an Exception (raised) or a full
     envelope dict with "error": True (returned as-is).
@@ -85,6 +86,7 @@ class FakeMaiClient:
         # getDeviceStatusHistoryDaily buckets per (device_id, date); a day
         # that isn't listed returns an empty list.
         self.battery_history: Dict[Tuple[str, date], Any] = {}
+        self.responses: Dict[str, Any] = {}
         self.calls: List[Tuple[str, tuple]] = []
 
     def call_count(self, name: str) -> int:
@@ -133,7 +135,10 @@ class FakeMaiClient:
         def _endpoint(*args: Any) -> Dict[str, Any]:
             self.calls.append((name, args))
             self._require_token()
-            return ok(None)
+            result = self.responses.get(name)
+            if isinstance(result, Exception):
+                raise result
+            return ok(result)
 
         return _endpoint
 

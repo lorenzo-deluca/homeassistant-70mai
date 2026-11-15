@@ -67,11 +67,13 @@ and which entities showed up** - that's the only way this table (and the
   dashcam on the account.
 - **`sensor`**: car battery voltage (from telemetry history), last
   report time, raw device/SIM/geofence status, network signal level,
-  cellular modem firmware version, SIM IMEI, account country, and the
-  dashcam's current firmware version.
+  cellular modem firmware version, SIM IMEI, account country, the
+  dashcam's own firmware version, SD card status, and cloud storage
+  used by its videos.
 - **`binary_sensor`**: whether the monitor-video cloud-upload switch is
-  on, and whether the SIM/cellular add-on can power the dashcam on its
-  own (parking-mode surveillance without the car battery).
+  on, whether the SIM/cellular add-on can power the dashcam on its
+  own (parking-mode surveillance without the car battery), and whether
+  anti-theft lost mode is on.
 - **`image`**: the latest parking-mode snapshot, for the (few) devices
   that actually take one.
 - **`event`**: fires whenever a new dashcam alarm (collision, motion,
@@ -182,15 +184,19 @@ falling back to its WiFi SSID):
 | Platform         | Entity                            | Notes |
 | ---------------- | ---------------------------------- | ----- |
 | `device_tracker` | *Device* Position                  | GPS source, only created for devices that actually report a position. Also carries `getPosition`'s raw, undocumented `status` field as an attribute. |
-| `sensor`         | *Device* Battery voltage            | Car battery voltage in volts. The unit is a strong inference from the raw telemetry (not officially documented by 70mai); the entity attributes flag this via `unit_confirmed: false`. The dashcam only reports it while powered, so the sensor keeps showing the last reading (also across restarts; falls back to yesterday's history when today has none), and the `last_sample` attribute says when it was taken. |
+| `sensor`         | *Device* Battery voltage            | Car battery voltage in volts (the raw telemetry is millivolts, confirmed from 70mai's own app code; `unit_confirmed: true`). It may stay empty on dashcams whose cellular add-on doesn't support external power (SIM external power support off). The dashcam only reports it while powered, so the sensor keeps showing the last reading (also across restarts; falls back to yesterday's history when today has none), and the `last_sample` attribute says when it was taken. |
 | `sensor`         | *Device* Last report                | Diagnostic timestamp of the last time the dashcam reported to the cloud (`getDashcamDetail`'s `device.reportTime`). |
 | `sensor`         | *Device* Status                     | Diagnostic passthrough of `getDashcamDetail`'s `deviceStatus` (plus `simPluginActiveStatus`/`geofenceActiveStatus` as attributes). Field names are confirmed but the exact value meaning isn't, so this exposes the raw value rather than an on/off state; flagged via `value_confirmed: false`. |
 | `sensor`         | *Device* Network level              | Diagnostic signal level from `getDashcamStatus` (a different, smaller endpoint than Status above), with its `status`/`allowPullAlive` fields as unconfirmed attributes. |
 | `sensor`         | *Device* Cellular firmware version | Diagnostic firmware version of the cellular add-on (`getSimPluginDetail`'s `pluginSoftwareVersion`, with the sub-version as an attribute). Only created for devices that actually have a SIM plugin (detected empirically, like Position). |
 | `sensor`         | *Device* SIM                        | Diagnostic SIM identity: IMEI as the state, plugin device id and beta-device flag as attributes (`getSimPluginDetail`). Same 4G-only gating as Cellular firmware version. |
 | `sensor`         | *Device* Country                    | Diagnostic account country code (`getUserCountryCode`). Account-level, so the same value is shown on every device on the account. |
-| `sensor`         | *Device* Firmware version            | Diagnostic current firmware version installed on the dashcam (`checkNewRomFromApp`'s `resultBodyObject.version`, confirmed to report the device's own installed firmware rather than the request's `base_version`), with release notes/date/size as attributes. |
+| `sensor`         | *Device* Firmware version            | Diagnostic firmware version from `checkNewRomFromApp`'s `resultBodyObject.version`, with release notes/date/size as attributes. On a real A810 with a SIM plugin it matched the cellular add-on's version, so it most likely isn't the dashcam's own firmware — see Dashcam firmware version. |
+| `sensor`         | *Device* Dashcam firmware version    | Diagnostic firmware version of the dashcam itself (`FWversion` in the device's last status report, `offlineDeviceApi/V2/getDeviceDetail`), with its release date and the report timestamp as attributes. |
+| `sensor`         | *Device* SD card                     | Diagnostic SD card status from the same report (`ApkTFStatus`). Passed through raw: only `SDOK` has been observed so far. |
+| `sensor`         | *Device* Cloud storage used          | Size of this dashcam's videos in 70mai's cloud (`UserspaceApi/getDeviceStats`), with video/picture counts and the account quota as attributes. Only created for devices that have cloud files. |
 | `binary_sensor`  | *Device* Monitor video upload        | Diagnostic, read-only state of the monitor-video cloud-upload switch (`getDeviceSwitch`'s `monitorVedioUpload`), with the per-event-type resource key config as an attribute. Toggling it still requires the 70mai app. |
+| `binary_sensor`  | *Device* Lost mode                   | Read-only state of the anti-theft lost mode (`getLostStatus`). Toggling it still requires the 70mai app. |
 | `binary_sensor`  | *Device* SIM external power support  | Diagnostic: whether the cellular add-on can power the dashcam on its own, e.g. for parking-mode surveillance without the car battery (`simPluginSupportOutPower`). Same 4G-only gating as the other SIM entities. |
 | `image`          | *Device* Parking photo               | The latest parking-mode snapshot (`getPosition`'s `parkPicUrl`). Only created for the (few) devices that actually populate it. |
 | `event`          | *Device* Alarm                      | Fires a generic `alarm` event per new alarm (collision, motion, etc. - the exact meaning of most alarm-type codes still isn't confirmed, only 101/collision is), with type, time, GPS position, and picture/video URLs as event data, plus the raw alarm payload. No longer filtered to a guessed alarm-type list, so it won't silently miss alarm types outside that guess (a bug in earlier versions). |
