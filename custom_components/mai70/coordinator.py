@@ -178,7 +178,7 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 "meta": device,
                 "name": _first_present(device, _DEVICE_NAME_KEYS) or device_id,
                 # No "position" here: Mai70PositionCoordinator polls it.
-                "battery_mv": await self._async_get_battery_mv(device_id),
+                **await self._async_get_battery(device_id),
                 "new_alarms": await self._async_get_new_alarms(device_id, begin_ms, now_ms),
                 "dashcam_detail": await self._async_get_dashcam_detail(device_id),
                 "cellular": await self._async_get_cellular_info(device_id),
@@ -281,15 +281,36 @@ class Mai70Coordinator(DataUpdateCoordinator):
             "parking_photo_switch": position.get("parkingPhotoSwitch"),
         }
 
-    async def _async_get_battery_mv(self, device_id: str) -> Optional[int]:
+    async def _async_get_battery(self, device_id: str) -> Dict[str, Optional[int]]:
+        """{"battery_mv", "battery_ts"} of the newest battery-voltage
+        sample, both None when there is none.
+
+        The history is per calendar day, and a dashcam only reports while
+        it's powered: a parked car can go a whole day (or every early
+        morning, until the first drive) without a sample. So when today
+        has none, yesterday's newest sample is used instead, and its
+        timestamp is exposed so a stale value is recognisable as such.
+        """
         today = date.today()
+        for day in (today, today - timedelta(days=1)):
+            sample = await self._async_get_latest_battery_sample(device_id, day)
+            if sample is not None:
+                return {
+                    "battery_mv": sample.get("latest"),
+                    "battery_ts": sample.get("latestTs") or sample.get("maxTs"),
+                }
+        return {"battery_mv": None, "battery_ts": None}
+
+    async def _async_get_latest_battery_sample(
+        self, device_id: str, day: date
+    ) -> Optional[Dict[str, Any]]:
         try:
             resp = await self._async_call(
                 self.client.get_device_status_history_daily,
                 device_id,
-                today.year,
-                today.month,
-                today.day,
+                day.year,
+                day.month,
+                day.day,
                 BATTERY_KEY_INDEX,
                 BATTERY_SMART_TYPE,
                 _local_utc_offset_hours(),
@@ -298,16 +319,21 @@ class Mai70Coordinator(DataUpdateCoordinator):
             _LOGGER.debug("getDeviceStatusHistoryDaily failed for %s: %s", device_id, exc)
             return None
         samples = resp.get("resultBodyObject")
-        if not isinstance(samples, list) or not samples:
+        if not isinstance(samples, list):
             return None
-        latest_sample = max(
-            (s for s in samples if isinstance(s, dict) and "maxTs" in s),
-            key=lambda s: s["maxTs"],
+        # Newest bucket by its "latest" reading's own timestamp (maxTs for
+        # buckets without one), skipping buckets with no reading at all.
+        return max(
+            (
+                s
+                for s in samples
+                if isinstance(s, dict)
+                and s.get("latest") is not None
+                and (s.get("latestTs") or s.get("maxTs")) is not None
+            ),
+            key=lambda s: s.get("latestTs") or s["maxTs"],
             default=None,
         )
-        if latest_sample is None:
-            return None
-        return latest_sample.get("latest")
 
     async def _async_get_dashcam_detail(self, device_id: str) -> Optional[Dict[str, Any]]:
         try:

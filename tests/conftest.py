@@ -3,6 +3,7 @@ helper that sets the integration up against it."""
 from __future__ import annotations
 
 import time
+from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch
 
@@ -28,6 +29,20 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 def ok(body: Any) -> Dict[str, Any]:
     """A successful MaiCommonResult envelope."""
     return {"error": False, "errorCode": 0, "errorMessage": None, "resultBodyObject": body}
+
+
+def battery_bucket(mv: int, ts_ms: int) -> Dict[str, Any]:
+    """One getDeviceStatusHistoryDaily bucket (confirmed field names)."""
+    return {
+        "keyIndex": "1.4",
+        "timeGap": 3600,
+        "max": mv,
+        "maxTs": ts_ms,
+        "min": mv,
+        "minTs": ts_ms,
+        "latest": mv,
+        "latestTs": ts_ms,
+    }
 
 
 def position_body(
@@ -67,6 +82,9 @@ class FakeMaiClient:
         self.login_calls = 0
         self.devices: List[Dict[str, Any]] = [{"deviceId": DEVICE_ID, "nickName": DEVICE_NAME}]
         self.positions: Dict[str, Any] = {DEVICE_ID: position_body()}
+        # getDeviceStatusHistoryDaily buckets per (device_id, date); a day
+        # that isn't listed returns an empty list.
+        self.battery_history: Dict[Tuple[str, date], Any] = {}
         self.calls: List[Tuple[str, tuple]] = []
 
     def call_count(self, name: str) -> int:
@@ -96,6 +114,16 @@ class FakeMaiClient:
             raise result
         if isinstance(result, dict) and result.get("error"):
             return result
+        return ok(result)
+
+    def get_device_status_history_daily(
+        self, device_id: str, year: int, month: int, day: int, *args: Any
+    ) -> Dict[str, Any]:
+        self.calls.append(("get_device_status_history_daily", (device_id, year, month, day, *args)))
+        self._require_token()
+        result = self.battery_history.get((device_id, date(year, month, day)), [])
+        if isinstance(result, Exception):
+            raise result
         return ok(result)
 
     def __getattr__(self, name: str):
