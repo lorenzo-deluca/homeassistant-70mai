@@ -22,7 +22,7 @@ from .const import (
     POSITION_SCAN_INTERVAL_IDLE,
     TOKEN_INVALID_RELOGIN_DELAY,
 )
-from client70mai import MaiClient
+from client70mai import MaiClient, quarter_hour_offsets
 from client70mai.exceptions import MaiError, MaiNotAuthenticatedError
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,11 +58,6 @@ def _first_present(item: Dict[str, Any], keys: tuple) -> Optional[str]:
         if value is not None:
             return str(value)
     return None
-
-
-def _local_utc_offset_hours() -> int:
-    offset = datetime.now().astimezone().utcoffset()
-    return int(offset.total_seconds() // 3600) if offset else 0
 
 
 def _is_session_invalidated(resp: Any) -> bool:
@@ -165,6 +160,7 @@ class Mai70Coordinator(DataUpdateCoordinator):
         now_ms = int(datetime.now().timestamp() * 1000)
         begin_ms = self._last_poll_ms or (now_ms - int(timedelta(days=1).total_seconds() * 1000))
         country_code = await self._async_get_country_code()
+        cloud_storage = await self._async_get_cloud_storage()
 
         result: Dict[str, Dict[str, Any]] = {}
         for device in device_list:
@@ -187,6 +183,9 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 "network_status": await self._async_get_network_status(device_id),
                 "device_switch": await self._async_get_device_switch(device_id),
                 "sim_out_power": await self._async_get_sim_out_power(device_id),
+                "device_report": await self._async_get_device_report(device_id),
+                "lost_mode": await self._async_get_lost_mode(device_id),
+                "cloud_storage": cloud_storage.get(device_id),
             }
 
         self._last_poll_ms = now_ms
@@ -313,7 +312,9 @@ class Mai70Coordinator(DataUpdateCoordinator):
                 day.day,
                 BATTERY_KEY_INDEX,
                 BATTERY_SMART_TYPE,
-                _local_utc_offset_hours(),
+                # Quarter-hours, not hours (client70mai >= 0.4.0 docs): the
+                # day boundaries are computed from this offset.
+                *quarter_hour_offsets(),
             )
         except MaiError as exc:
             _LOGGER.debug("getDeviceStatusHistoryDaily failed for %s: %s", device_id, exc)
@@ -424,6 +425,90 @@ class Mai70Coordinator(DataUpdateCoordinator):
             return None
         body = resp.get("resultBodyObject")
         return bool(body) if isinstance(body, bool) else None
+
+    async def _async_get_device_report(self, device_id: str) -> Optional[Dict[str, Any]]:
+        """The dashcam's own last status report, from
+        offlineDeviceApi/V2/getDeviceDetail's confirmed statisticsList
+        (despite "offline" in the path, it answers for cloud-connected
+        devices too). The only source of the dashcam's OWN firmware
+        version and SD-card status; returns None without a FWversion or
+        ApkTFStatus entry.
+        """
+        try:
+            resp = await self._async_call(self.client.get_offline_device_detail, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("getDeviceDetail (offline) failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        stats = body.get("statisticsList") if isinstance(body, dict) else None
+        if not isinstance(stats, list):
+            return None
+        values = {
+            item["key"]: item.get("value")
+            for item in stats
+            if isinstance(item, dict) and isinstance(item.get("key"), str)
+        }
+        if values.get("FWversion") is None and values.get("ApkTFStatus") is None:
+            return None
+        return {
+            "firmware_version": values.get("FWversion"),
+            # epoch seconds, as a string
+            "firmware_date": values.get("FWversionDate"),
+            "sd_status": values.get("ApkTFStatus"),
+            # YYYYMMDDhhmmss, presumably when the dashcam last reported
+            "report_timestamp": values.get("Timestamp"),
+        }
+
+    async def _async_get_lost_mode(self, device_id: str) -> Optional[bool]:
+        """Anti-theft lost mode, from getLostStatus's confirmed "lost"."""
+        try:
+            resp = await self._async_call(self.client.get_lost_status, device_id)
+        except MaiError as exc:
+            _LOGGER.debug("getLostStatus failed for %s: %s", device_id, exc)
+            return None
+        body = resp.get("resultBodyObject")
+        lost = body.get("lost") if isinstance(body, dict) else None
+        return lost if isinstance(lost, bool) else None
+
+    async def _async_get_cloud_storage(self) -> Dict[str, Dict[str, Any]]:
+        """{device_id: usage} from UserspaceApi/getDeviceStats (confirmed,
+        bytes), each with the account quota from getUserSpaceBrief's
+        diskSize. Both are account-level calls, made once per poll."""
+        try:
+            resp = await self._async_call(self.client.get_userspace_device_stats)
+        except MaiError as exc:
+            _LOGGER.debug("UserspaceApi getDeviceStats failed: %s", exc)
+            return {}
+        devices = resp.get("resultBodyObject")
+        if not isinstance(devices, list):
+            return {}
+
+        quota: Optional[int] = None
+        try:
+            brief = (
+                await self._async_call(self.client.get_user_space_brief)
+            ).get("resultBodyObject")
+        except MaiError as exc:
+            _LOGGER.debug("getUserSpaceBrief failed: %s", exc)
+            brief = None
+        if isinstance(brief, dict) and isinstance(brief.get("diskSize"), int):
+            quota = brief["diskSize"]
+
+        result: Dict[str, Dict[str, Any]] = {}
+        for item in devices:
+            if not isinstance(item, dict) or not item.get("deviceId"):
+                continue
+            if not isinstance(item.get("videoSize"), int):
+                continue
+            result[str(item["deviceId"])] = {
+                "video_size": item["videoSize"],
+                "video_count": item.get("videoCount"),
+                "pic_size": item.get("picSize"),
+                "pic_count": item.get("picCount"),
+                "updated": item.get("updateTimestamp"),
+                "quota": quota,
+            }
+        return result
 
     async def _async_get_firmware_info(
         self, device_id: str, device_meta: Dict[str, Any]

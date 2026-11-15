@@ -31,6 +31,12 @@ async def async_setup_entry(
         entity_factory=lambda device_id: Mai70SimOutPowerSensor(coordinator, device_id),
         should_add=lambda data: data.get("sim_out_power") is not None,
     )
+    async_setup_dynamic_entities(
+        coordinator,
+        async_add_entities,
+        entity_factory=lambda device_id: Mai70LostModeSensor(coordinator, device_id),
+        should_add=lambda data: data.get("lost_mode") is not None,
+    )
 
 
 class Mai70MonitorVideoUploadSensor(Mai70Entity, BinarySensorEntity):
@@ -81,3 +87,21 @@ class Mai70SimOutPowerSensor(Mai70Entity, BinarySensorEntity):
     @property
     def is_on(self) -> Optional[bool]:
         return self._device_data.get("sim_out_power")
+
+
+class Mai70LostModeSensor(Mai70Entity, BinarySensorEntity):
+    """Whether anti-theft "lost mode" is on, from getLostStatus's
+    confirmed "lost" field. Read-only: lostOn/lostOff aren't called.
+    """
+
+    _attr_translation_key = "lost_mode"
+    _attr_name = None
+    _attr_icon = "mdi:shield-car"
+
+    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_lost_mode"
+
+    @property
+    def is_on(self) -> Optional[bool]:
+        return self._device_data.get("lost_mode")

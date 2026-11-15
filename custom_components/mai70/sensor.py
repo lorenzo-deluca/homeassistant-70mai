@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfElectricPotential
+from homeassistant.const import EntityCategory, UnitOfElectricPotential, UnitOfInformation
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -82,6 +82,25 @@ async def async_setup_entry(
         entity_factory=lambda device_id: Mai70NetworkLevelSensor(coordinator, device_id),
         should_add=lambda data: (data.get("network_status") or {}).get("network_level") is not None,
     )
+    async_setup_dynamic_entities(
+        coordinator,
+        async_add_entities,
+        entity_factory=lambda device_id: Mai70DashcamFirmwareSensor(coordinator, device_id),
+        should_add=lambda data: (data.get("device_report") or {}).get("firmware_version")
+        is not None,
+    )
+    async_setup_dynamic_entities(
+        coordinator,
+        async_add_entities,
+        entity_factory=lambda device_id: Mai70SdCardSensor(coordinator, device_id),
+        should_add=lambda data: (data.get("device_report") or {}).get("sd_status") is not None,
+    )
+    async_setup_dynamic_entities(
+        coordinator,
+        async_add_entities,
+        entity_factory=lambda device_id: Mai70CloudStorageSensor(coordinator, device_id),
+        should_add=lambda data: data.get("cloud_storage") is not None,
+    )
 
 
 def battery_unique_id(device_id: str) -> str:
@@ -97,8 +116,9 @@ def _ts_to_datetime(ts: Optional[int]) -> Optional[datetime]:
 
 class Mai70BatterySensor(Mai70Entity, RestoreSensor):
     """Car battery voltage, read from getDeviceStatusHistoryDaily's
-    keyIndex "1.4" (millivolts, not officially documented; see
-    client70mai.client.MaiClient.get_device_status_history_daily).
+    keyIndex "1.4", in millivolts: 70mai's own power-monitor screen
+    divides the value by 1000 and checks it against 12-18 V thresholds
+    (see client70mai.client.MaiClient.get_device_status_history_daily).
 
     A dashcam only reports this while powered, so many polls find no new
     sample. The sensor keeps showing the last reading it got (also across
@@ -161,7 +181,7 @@ class Mai70BatterySensor(Mai70Entity, RestoreSensor):
         return {
             "last_sample": last_sample.isoformat() if last_sample else None,
             "raw_key_index": BATTERY_KEY_INDEX,
-            "unit_confirmed": False,
+            "unit_confirmed": True,
         }
 
 
@@ -371,4 +391,110 @@ class Mai70NetworkLevelSensor(Mai70Entity, SensorEntity):
             "status": self._network_status.get("status"),
             "allow_pull_alive": self._network_status.get("allow_pull_alive"),
             "status_and_allow_pull_alive_confirmed": False,
+        }
+
+
+def _parse_epoch_seconds(value: Any) -> Optional[str]:
+    try:
+        return dt_util.utc_from_timestamp(int(value)).isoformat()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+class Mai70DashcamFirmwareSensor(Mai70Entity, SensorEntity):
+    """The dashcam's own firmware version (statisticsList "FWversion" of
+    offlineDeviceApi/V2/getDeviceDetail, confirmed). Distinct from the
+    cellular add-on's firmware (Mai70CellularFirmwareSensor).
+    """
+
+    _attr_translation_key = "dashcam_firmware"
+    _attr_name = None
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:chip"
+
+    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_dashcam_firmware"
+
+    @property
+    def _report(self) -> Dict[str, Any]:
+        return self._device_data.get("device_report") or {}
+
+    @property
+    def native_value(self) -> Optional[str]:
+        return self._report.get("firmware_version")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return {
+            "firmware_date": _parse_epoch_seconds(self._report.get("firmware_date")),
+            "report_timestamp": self._report.get("report_timestamp"),
+        }
+
+
+class Mai70SdCardSensor(Mai70Entity, SensorEntity):
+    """SD/TF card status as last reported by the dashcam (statisticsList
+    "ApkTFStatus"). Only "SDOK" has been observed, so the raw code is
+    passed through rather than mapped to a fixed set of states.
+    """
+
+    _attr_translation_key = "sd_card"
+    _attr_name = None
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:micro-sd"
+
+    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_sd_card"
+
+    @property
+    def _report(self) -> Dict[str, Any]:
+        return self._device_data.get("device_report") or {}
+
+    @property
+    def native_value(self) -> Optional[str]:
+        return self._report.get("sd_status")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return {
+            "report_timestamp": self._report.get("report_timestamp"),
+            "values_confirmed": ["SDOK"],
+        }
+
+
+class Mai70CloudStorageSensor(Mai70Entity, SensorEntity):
+    """Cloud storage used by this device's videos, from
+    UserspaceApi/getDeviceStats (confirmed, bytes); the account quota
+    (getUserSpaceBrief's diskSize) and file counts are attributes.
+    """
+
+    _attr_translation_key = "cloud_storage"
+    _attr_name = None
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfInformation.BYTES
+    _attr_suggested_unit_of_measurement = UnitOfInformation.MEGABYTES
+    _attr_suggested_display_precision = 1
+    _attr_icon = "mdi:cloud"
+
+    def __init__(self, coordinator: Mai70Coordinator, device_id: str) -> None:
+        super().__init__(coordinator, device_id)
+        self._attr_unique_id = f"{device_id}_cloud_storage"
+
+    @property
+    def _storage(self) -> Dict[str, Any]:
+        return self._device_data.get("cloud_storage") or {}
+
+    @property
+    def native_value(self) -> Optional[int]:
+        return self._storage.get("video_size")
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return {
+            "video_count": self._storage.get("video_count"),
+            "picture_count": self._storage.get("pic_count"),
+            "picture_size": self._storage.get("pic_size"),
+            "account_quota": self._storage.get("quota"),
         }

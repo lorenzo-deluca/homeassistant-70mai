@@ -52,6 +52,15 @@
       },
       "network_level": {
         "name": "Network level"
+      },
+      "dashcam_firmware": {
+        "name": "Dashcam firmware version"
+      },
+      "sd_card": {
+        "name": "SD card"
+      },
+      "cloud_storage": {
+        "name": "Cloud storage used"
       }
     },
     "binary_sensor": {
@@ -60,6 +69,9 @@
       },
       "sim_out_power": {
         "name": "SIM external power support"
+      },
+      "lost_mode": {
+        "name": "Lost mode"
       }
     },
     "image": {
